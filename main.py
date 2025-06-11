@@ -90,11 +90,11 @@
         import { getFirestore, doc, getDoc, setDoc, onSnapshot, updateDoc, arrayUnion, runTransaction } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         import * as THREE from 'three';
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { firebaseConfig } from './firebase-config.js';
 
         const GRID_SIZE = 15, GAME_DURATION_SECONDS = 300, PIXEL_CLICK_COOLDOWN = 250;
         const PLAYER_COLORS = ["#FF5733", "#33FF57", "#3357FF", "#FF33A1", "#A133FF", "#33FFA1", "#FFD700", "#00FFFF"];
         
-        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-color-wars-3d';
         const DB_PATH = `artifacts/${appId}/public/data/color-wars-3d-games`;
 
@@ -389,7 +389,11 @@
         playAgainBtn.addEventListener('click', resetToLobby); canvasContainer.addEventListener('click', handleCanvasClick);
         window.addEventListener('resize', onWindowResize);
 
-        initialize();
+        if (!firebaseConfig || Object.keys(firebaseConfig).length === 0) {
+            alert('⚠️ Firebase غير مفعّل');
+        } else {
+            initialize();
+        }
     </script>
 </body>
 </html>
