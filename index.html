@@ -98,7 +98,10 @@
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-color-wars-3d';
         const DB_PATH = `artifacts/${appId}/public/data/color-wars-3d-games`;
 
-        let app, auth, db, userId, selectedColorIndex = 0;
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        let userId, selectedColorIndex = 0;
         let unsubGame = null, timerInterval = null, currentGameId = null, lastClickTime = 0;
         let scene, camera, renderer, controls, raycaster, mouse, cubeMeshes = [], is3DInitialized = false;
 
@@ -136,11 +139,10 @@
         async function initialize() {
              try {
                 renderColorPicker();
-                app = initializeApp(firebaseConfig); db = getFirestore(app); auth = getAuth(app);
-                onAuthStateChanged(auth, async (user) => {
-                    if (user) { userId = user.uid; createGameBtn.disabled = false; joinGameBtn.disabled = false; authStatus.textContent = "متصل وجاهز للعب!"; authStatus.classList.remove('text-yellow-400'); authStatus.classList.add('text-green-400'); }
-                });
-                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) await signInWithCustomToken(auth, __initial_auth_token); else await signInAnonymously(auth);
+            onAuthStateChanged(auth, async (user) => {
+                if (user) { userId = user.uid; createGameBtn.disabled = false; joinGameBtn.disabled = false; authStatus.textContent = "متصل وجاهز للعب!"; authStatus.classList.remove('text-yellow-400'); authStatus.classList.add('text-green-400'); }
+            });
+            if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) await signInWithCustomToken(auth, __initial_auth_token); else await signInAnonymously(auth);
             } catch (error) { authStatus.textContent = "فشل الاتصال بالخادم."; }
         }
         
