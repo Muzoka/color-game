@@ -302,8 +302,11 @@
             if (!is3DInitialized || !Array.isArray(grid) || grid.length === 0) return;
             grid.forEach((cell, i) => {
                 const colorIndex = cell && typeof cell.colorIndex === 'number' ? cell.colorIndex : -1;
-                if (cubeMeshes[i]) cubeMeshes[i].material.color.set(colorIndex !== -1 ? PLAYER_COLORS[colorIndex] : 0x4B5563);
+                if (cubeMeshes[i]) {
+                    cubeMeshes[i].material.color.set(colorIndex !== -1 ? PLAYER_COLORS[colorIndex] : 0x4B5563);
+                }
             });
+            console.log('Cube colors updated', grid);
         }
 
         function updateScores(grid, players) {
@@ -327,21 +330,23 @@
             const gameRef = doc(db, DB_PATH, currentGameId);
             const gameSnap = await getDoc(gameRef);
             if (!gameSnap.exists() || gameSnap.data().status !== "playing") return;
-            
+
             const me = gameSnap.data().players.find(p => p.uid === userId);
             if (!me) return;
 
             const rect = renderer.domElement.getBoundingClientRect();
-            mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1; mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+            mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+            mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
             raycaster.setFromCamera(mouse, camera);
             const intersects = raycaster.intersectObjects(cubeMeshes);
             if (intersects.length > 0) {
                 const index = intersects[0].object.userData.gridIndex;
                 if (index !== undefined) {
                     lastClickTime = Date.now();
-                    await updateDoc(gameRef, {
-                        [`grid.${index}`]: { owner: userId, colorIndex: me.colorIndex }
-                    });
+                    const newGrid = [...gameSnap.data().grid];
+                    newGrid[index] = { owner: userId, colorIndex: me.colorIndex };
+                    console.log('Updating cell', index, newGrid[index]);
+                    await updateDoc(gameRef, { grid: newGrid });
                 }
             }
         }
