@@ -372,7 +372,6 @@
                     cubeMeshes[i].material.color.set(colorIndex !== -1 ? PLAYER_COLORS[colorIndex] : 0x4B5563);
                 }
             });
-            console.log('Cube colors updated', grid);
         }
 
         function updateScores(grid, players) {
@@ -444,9 +443,10 @@
             for (const cell of gameData.grid) {
                 if (cell && cell.owner && cell.owner in scores) scores[cell.owner]++;
             }
-            let winnerId = null, maxScore = -1, isTie = false;
-            Object.keys(scores).forEach(pId => { if (scores[pId] > maxScore) { maxScore = scores[pId]; winnerId = pId; isTie = false; } else if (scores[pId] === maxScore && maxScore > 0) { isTie = true; } });
-            await updateDoc(doc(db, DB_PATH, currentGameId), { winner: isTie ? 'tie' : winnerId });
+            const maxScore = Math.max(...Object.values(scores));
+            const winners = Object.keys(scores).filter(pid => scores[pid] === maxScore);
+            const isTie = winners.length !== 1 || maxScore === 0;
+            await updateDoc(doc(db, DB_PATH, currentGameId), { winner: isTie ? 'tie' : winners[0] });
         }
         
        function showWinner(gameData) {
@@ -498,7 +498,7 @@
         }
 
         function queueCubeUpdate(index, colorIndex) {
-            updateQueue[`grid.${index}`] = { owner: userId, colorIndex };
+            updateQueue[index] = { owner: userId, colorIndex };
             if(!flushTimeout){
                 flushTimeout = setTimeout(flushCubeUpdates, UPDATE_BATCH_DELAY);
             }
@@ -514,20 +514,16 @@
                     const snap = await tx.get(gameRef);
                     if(!snap.exists()) return;
                     const data = snap.data();
-                    const grid = Array.isArray(data.grid) ? data.grid : [];
-                    const validUpdates = {};
-                    Object.keys(updates).forEach(path => {
-                        const index = parseInt(path.split('.')[1], 10);
-                        const newCell = updates[path];
+                    const grid = Array.isArray(data.grid) ? [...data.grid] : [];
+                    Object.keys(updates).forEach(key => {
+                        const index = parseInt(key, 10);
+                        const newCell = updates[key];
                         const existing = grid[index];
                         if(!existing || existing.owner !== newCell.owner){
-                            validUpdates[path] = newCell;
                             grid[index] = newCell;
                         }
                     });
-                    if(Object.keys(validUpdates).length > 0){
-                        tx.update(gameRef, validUpdates);
-                    }
+                    tx.update(gameRef, { grid });
                 });
             } catch(e){
                 console.error('Cube update failed', e);
