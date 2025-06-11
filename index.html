@@ -137,13 +137,27 @@
         function onWindowResize() { if (!is3DInitialized) return; camera.aspect = canvasContainer.clientWidth / canvasContainer.clientHeight; camera.updateProjectionMatrix(); renderer.setSize(canvasContainer.clientWidth, canvasContainer.clientHeight); }
         
         async function initialize() {
-             try {
+            try {
                 renderColorPicker();
-            onAuthStateChanged(auth, async (user) => {
-                if (user) { userId = user.uid; createGameBtn.disabled = false; joinGameBtn.disabled = false; authStatus.textContent = "متصل وجاهز للعب!"; authStatus.classList.remove('text-yellow-400'); authStatus.classList.add('text-green-400'); }
-            });
-            if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) await signInWithCustomToken(auth, __initial_auth_token); else await signInAnonymously(auth);
-            } catch (error) { authStatus.textContent = "فشل الاتصال بالخادم."; }
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        userId = user.uid;
+                        createGameBtn.disabled = false;
+                        joinGameBtn.disabled = false;
+                        authStatus.textContent = "متصل وجاهز للعب!";
+                        authStatus.classList.remove('text-yellow-400');
+                        authStatus.classList.add('text-green-400');
+                    }
+                });
+            } catch (error) {
+                console.error('Auth error:', error);
+                authStatus.textContent = "فشل الاتصال بالخادم.";
+            }
         }
         
         function getPlayerInput() {
