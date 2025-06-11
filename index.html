@@ -246,7 +246,7 @@
                     renderGameBoard(gameData);
                     if (gameData.status === 'finished') {
                         if (!gameData.winner && userId === gameData.host) calculateAndSetWinner(gameData);
-                        if (!winnerModal.classList.contains('flex')) showWinner(gameData);
+                        if (gameData.winner) showWinner(gameData);
                     }
                 }
             }
@@ -364,11 +364,16 @@
         }
         
         function showWinner(gameData) {
-            if (winnerModal.classList.contains('flex')) return;
-            if (gameData.winner === 'tie') { winnerTitle.textContent = "👑 تعادل! 👑"; winnerMessage.textContent = "لقد كانت معركة شرسة وانتهت بالتعادل!"; }
-            else {
+            if (!gameData.winner) return;
+            if (gameData.winner === 'tie') {
+                winnerTitle.textContent = "👑 تعادل! 👑";
+                winnerMessage.textContent = "لقد كانت معركة شرسة وانتهت بالتعادل!";
+            } else {
                 const winnerInfo = gameData.players.find(p => p.uid === gameData.winner);
-                if (winnerInfo) { winnerTitle.textContent = "🎉 الفائز هو! 🎉"; winnerMessage.innerHTML = `اللاعب <span class="font-bold" style="color:${PLAYER_COLORS[winnerInfo.colorIndex]}">${winnerInfo.name}</span> هو المسيطر على اللوحة!`; }
+                if (winnerInfo) {
+                    winnerTitle.textContent = "🎉 الفائز هو! 🎉";
+                    winnerMessage.innerHTML = `اللاعب <span class="font-bold" style="color:${PLAYER_COLORS[winnerInfo.colorIndex]}">${winnerInfo.name}</span> هو المسيطر على اللوحة!`;
+                }
             }
             winnerModal.classList.remove('hidden');
             winnerModal.classList.add('flex');
