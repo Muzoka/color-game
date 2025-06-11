@@ -406,6 +406,8 @@
             if (intersects.length > 0) {
                 const index = intersects[0].object.userData.gridIndex;
                 if (index !== undefined) {
+                    const existing = latestGameData.grid[index];
+                    if (existing && existing.owner === userId) return;
                     lastClickTime = Date.now();
                     latestGameData.grid[index] = { owner: userId, colorIndex: me.colorIndex };
                     updateCubeColors(latestGameData.grid, latestGameData.players);
@@ -505,8 +507,31 @@
         async function flushCubeUpdates(){
             const updates = { ...updateQueue };
             updateQueue = {}; flushTimeout = null;
-            try{ if(currentGameId) await updateDoc(doc(db, DB_PATH, currentGameId), updates); }
-            catch(e){ console.error('Cube update failed', e); }
+            if(!currentGameId || Object.keys(updates).length === 0) return;
+            const gameRef = doc(db, DB_PATH, currentGameId);
+            try {
+                await runTransaction(db, async (tx) => {
+                    const snap = await tx.get(gameRef);
+                    if(!snap.exists()) return;
+                    const data = snap.data();
+                    const grid = Array.isArray(data.grid) ? data.grid : [];
+                    const validUpdates = {};
+                    Object.keys(updates).forEach(path => {
+                        const index = parseInt(path.split('.')[1], 10);
+                        const newCell = updates[path];
+                        const existing = grid[index];
+                        if(!existing || existing.owner !== newCell.owner){
+                            validUpdates[path] = newCell;
+                            grid[index] = newCell;
+                        }
+                    });
+                    if(Object.keys(validUpdates).length > 0){
+                        tx.update(gameRef, validUpdates);
+                    }
+                });
+            } catch(e){
+                console.error('Cube update failed', e);
+            }
         }
         
         function renderColorPicker() {
