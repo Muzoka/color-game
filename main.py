@@ -221,10 +221,14 @@
             if (!gameData || !gameData.status || !gameData.players) return;
             // The user is considered "in the game" if their ID is in the players array.
             if (gameData.players.some(p => p.uid === userId)) {
-                if (gameData.status === 'lobby') renderLobby(gameData);
-                else if (gameData.status === 'playing' || gameData.status === 'finished') {
+                if (gameData.status === 'lobby') {
+                    renderLobby(gameData);
+                } else if (gameData.status === 'playing' || gameData.status === 'finished') {
                     renderGameBoard(gameData);
-                    if (gameData.status === 'finished' && !winnerModal.classList.contains('flex')) showWinner(gameData);
+                    if (gameData.status === 'finished') {
+                        if (!gameData.winner && userId === gameData.host) calculateAndSetWinner(gameData);
+                        if (!winnerModal.classList.contains('flex')) showWinner(gameData);
+                    }
                 }
             }
         }
@@ -258,7 +262,10 @@
                     if (currentGameId) {
                         const gameRef = doc(db, DB_PATH, currentGameId);
                         const docSnap = await getDoc(gameRef);
-                        if (docSnap.exists() && docSnap.data().host === userId && docSnap.data().status === 'playing') await updateDoc(gameRef, { status: "finished" });
+                        if (docSnap.exists() && docSnap.data().host === userId && docSnap.data().status === 'playing') {
+                            await updateDoc(gameRef, { status: "finished" });
+                            await calculateAndSetWinner(docSnap.data());
+                        }
                     }
                 }
             }, 500);
