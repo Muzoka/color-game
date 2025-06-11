@@ -87,7 +87,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, getDoc, setDoc, onSnapshot, updateDoc, arrayUnion } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, getDoc, setDoc, onSnapshot, updateDoc, arrayUnion, runTransaction } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         import * as THREE from 'three';
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
@@ -157,47 +157,36 @@
             });
             listenToGameUpdates(gameId);
         }
-
         async function joinGame(gameId) {
             if (!gameId) { authStatus.textContent = "الرجاء إدخال معرّف اللعبة."; return; }
             joinGameBtn.disabled = true;
             authStatus.textContent = "جاري التحقق من اللعبة...";
-            
             try {
                 const gameRef = doc(db, DB_PATH, gameId);
-                const gameSnap = await getDoc(gameRef);
-                if (!gameSnap.exists()) throw new Error("اللعبة غير موجودة! تأكد من المعرّف.");
-
-                const gameData = gameSnap.data();
-                if (gameData.status !== 'lobby') throw new Error("لا يمكن الانضمام، اللعبة قد بدأت بالفعل.");
-                
-                const players = gameData.players || [];
-                if (players.length >= PLAYER_COLORS.length && !players.some(p => p.uid === userId)) throw new Error("عذراً، هذه اللعبة ممتلئة.");
-                if (players.some(p => p.uid === userId)) {
-                    listenToGameUpdates(gameId);
-                    return;
-                }
-
-                authStatus.textContent = "تم العثور على اللعبة، جاري الانضمام...";
-                const newPlayer = getPlayerInput();
-                
-                const usedColors = players.map(p => p.colorIndex);
-                if(usedColors.includes(newPlayer.colorIndex)){
-                    const availableColor = PLAYER_COLORS.map((_,i) => i).find(i => !usedColors.includes(i));
-                    if(availableColor !== undefined) newPlayer.colorIndex = availableColor;
-                    else throw new Error("عذراً، لا توجد ألوان متاحة.");
-                }
-
-                await updateDoc(gameRef, {
-                    players: arrayUnion(newPlayer)
+                await runTransaction(db, async (tx) => {
+                    const gameSnap = await tx.get(gameRef);
+                    if (!gameSnap.exists()) throw new Error("اللعبة غير موجودة! تأكد من المعرّف.");
+                    const gameData = gameSnap.data();
+                    if (gameData.status !== 'lobby') throw new Error("لا يمكن الانضمام، اللعبة قد بدأت بالفعل.");
+                    const players = gameData.players || [];
+                    if (players.some(p => p.uid === userId)) return;
+                    if (players.length >= PLAYER_COLORS.length) throw new Error("عذراً، هذه اللعبة ممتلئة.");
+                    const newPlayer = getPlayerInput();
+                    const usedColors = players.map(p => p.colorIndex);
+                    if (usedColors.includes(newPlayer.colorIndex)) {
+                        const availableColor = PLAYER_COLORS.map((_,i) => i).find(i => !usedColors.includes(i));
+                        if (availableColor !== undefined) newPlayer.colorIndex = availableColor;
+                        else throw new Error("عذراً، لا توجد ألوان متاحة.");
+                    }
+                    tx.update(gameRef, { players: arrayUnion(newPlayer) });
                 });
-                
                 listenToGameUpdates(gameId);
             } catch (error) {
                 authStatus.textContent = error.message;
                 setTimeout(() => { authStatus.textContent = "متصل وجاهز للعب!"; joinGameBtn.disabled = false; }, 3000);
             }
         }
+
         
         async function startGame() {
             const gameRef = doc(db, DB_PATH, currentGameId);
