@@ -18,6 +18,7 @@
         .card { @apply bg-gray-800 p-6 rounded-xl shadow-2xl border border-gray-700; }
         .player-list-item { @apply flex items-center gap-3 p-2 bg-gray-700 rounded-md; }
         .input-field { @apply text-sm rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block w-full p-2.5 text-center; }
+        #canvas-container.faded { opacity: 0.2; pointer-events: none; transition: opacity 0.5s; }
     </style>
 </head>
 <body class="bg-gray-900 text-white flex items-center justify-center min-h-screen">
@@ -105,6 +106,7 @@
         </div>
     
     <script async src="https://unpkg.com/es-module-shims@1.6.3/dist/es-module-shims.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
     <script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.155.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.155.0/examples/jsm/" } }</script>
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
@@ -445,7 +447,7 @@
             await updateDoc(doc(db, DB_PATH, currentGameId), { winner: isTie ? 'tie' : winnerId });
         }
         
-        function showWinner(gameData) {
+       function showWinner(gameData) {
             if (!gameData.winner) return;
             if (gameData.winner === 'tie') {
                 winnerTitle.textContent = "👑 تعادل! 👑";
@@ -459,6 +461,10 @@
             }
             winnerModal.classList.remove('hidden');
             winnerModal.classList.add('flex');
+            canvasContainer.classList.add('faded');
+            if (typeof confetti === 'function') {
+                confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
+            }
         }
 
         function cleanupListeners() {
@@ -471,6 +477,7 @@
             cleanupListeners();
             is3DInitialized = false; cubeMeshes = []; hoveredCube = null;
             winnerModal.classList.add('hidden'); gameBoardDiv.classList.add('hidden'); gameLobbyDiv.classList.add('hidden'); gameSetupDiv.classList.remove('hidden');
+            canvasContainer.classList.remove('faded');
             configOptionsDiv.classList.add('hidden');
             joinGameIdInput.value = ''; authStatus.textContent = message;
         }
