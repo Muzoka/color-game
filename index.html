@@ -214,7 +214,11 @@
         
         async function startGame() {
             const gameRef = doc(db, DB_PATH, currentGameId);
-            await updateDoc(gameRef, { status: 'playing', grid: Array(GRID_SIZE * GRID_SIZE).fill(-1), startTime: new Date().toISOString() });
+            await updateDoc(gameRef, {
+                status: 'playing',
+                grid: Array(GRID_SIZE * GRID_SIZE).fill(null),
+                startTime: new Date().toISOString()
+            });
         }
         
         function listenToGameUpdates(gameId) {
@@ -296,19 +300,24 @@
         
         function updateCubeColors(grid, players) {
             if (!is3DInitialized || !Array.isArray(grid) || grid.length === 0) return;
-            grid.forEach((colorIndex, i) => { if (cubeMeshes[i]) cubeMeshes[i].material.color.set(colorIndex !== -1 ? PLAYER_COLORS[colorIndex] : 0x4B5563); });
+            grid.forEach((cell, i) => {
+                const colorIndex = cell && typeof cell.colorIndex === 'number' ? cell.colorIndex : -1;
+                if (cubeMeshes[i]) cubeMeshes[i].material.color.set(colorIndex !== -1 ? PLAYER_COLORS[colorIndex] : 0x4B5563);
+            });
         }
 
         function updateScores(grid, players) {
             scoresContainer.innerHTML = '';
             if (!Array.isArray(grid) || !Array.isArray(players)) return;
             const scores = {};
-            players.forEach(p => scores[p.colorIndex] = 0);
-            for (const colorIndex of grid) if (colorIndex in scores) scores[colorIndex]++;
+            players.forEach(p => scores[p.uid] = 0);
+            for (const cell of grid) {
+                if (cell && cell.owner && cell.owner in scores) scores[cell.owner]++;
+            }
             players.forEach(p => {
                 const scoreElement = document.createElement('div');
                 scoreElement.className = 'flex items-center justify-center gap-2 p-2 bg-gray-700 rounded-lg';
-                scoreElement.innerHTML = `<div class="color-box rounded-md" style="background-color: ${PLAYER_COLORS[p.colorIndex]}"></div><span class="font-bold text-lg">${scores[p.colorIndex] || 0}</span>`;
+                scoreElement.innerHTML = `<div class="color-box rounded-md" style="background-color: ${PLAYER_COLORS[p.colorIndex]}"></div><span class="font-bold text-lg">${scores[p.uid] || 0}</span>`;
                 scoresContainer.appendChild(scoreElement);
             });
         }
@@ -325,10 +334,15 @@
             const rect = renderer.domElement.getBoundingClientRect();
             mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1; mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
             raycaster.setFromCamera(mouse, camera);
-            const intersects = raycaster.intersectObjects(scene.children);
+            const intersects = raycaster.intersectObjects(cubeMeshes);
             if (intersects.length > 0) {
                 const index = intersects[0].object.userData.gridIndex;
-                if (index !== undefined) { lastClickTime = Date.now(); await updateDoc(gameRef, { [`grid.${index}`]: me.colorIndex }); }
+                if (index !== undefined) {
+                    lastClickTime = Date.now();
+                    await updateDoc(gameRef, {
+                        [`grid.${index}`]: { owner: userId, colorIndex: me.colorIndex }
+                    });
+                }
             }
         }
         
@@ -336,9 +350,8 @@
             if (gameData.winner || !Array.isArray(gameData.grid)) return;
             const scores = {};
             gameData.players.forEach(p => scores[p.uid] = 0);
-            for (const colorIndex of gameData.grid) {
-                const player = gameData.players.find(p => p.colorIndex === colorIndex);
-                if (player) scores[player.uid]++;
+            for (const cell of gameData.grid) {
+                if (cell && cell.owner && cell.owner in scores) scores[cell.owner]++;
             }
             let winnerId = null, maxScore = -1, isTie = false;
             Object.keys(scores).forEach(pId => { if (scores[pId] > maxScore) { maxScore = scores[pId]; winnerId = pId; isTie = false; } else if (scores[pId] === maxScore && maxScore > 0) { isTie = true; } });
