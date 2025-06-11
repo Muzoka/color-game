@@ -92,7 +92,7 @@
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
         import { firebaseConfig } from './firebase-config.js';
 
-        const GRID_SIZE = 15, GAME_DURATION_SECONDS = 300, PIXEL_CLICK_COOLDOWN = 250;
+        const GRID_SIZE = 15, GAME_DURATION_SECONDS = 300, PIXEL_CLICK_COOLDOWN = 250, UPDATE_BATCH_DELAY = 100;
         const PLAYER_COLORS = ["#FF5733", "#33FF57", "#3357FF", "#FF33A1", "#A133FF", "#33FFA1", "#FFD700", "#00FFFF"];
         
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-color-wars-3d';
@@ -104,6 +104,7 @@
         let userId, selectedColorIndex = 0;
         let unsubGame = null, timerInterval = null, currentGameId = null, lastClickTime = 0;
         let scene, camera, renderer, controls, raycaster, mouse, cubeMeshes = [], is3DInitialized = false;
+        let latestGameData = null, updateQueue = {}, flushTimeout = null;
 
         const el = (id) => document.getElementById(id);
         const [gameSetupDiv, playerNameInput, gameLobbyDiv, lobbyGameId, lobbyPlayersList, playerCount, startGameBtn, lobbyWaitingMsg, gameBoardDiv, canvasContainer, createGameBtn, joinGameBtn, joinGameIdInput, authStatus, gameIdDisplay, timerDisplay, playerColorBox, statusMessage, scoresContainer, winnerModal, winnerTitle, winnerMessage, playAgainBtn, colorPicker] =
@@ -228,6 +229,7 @@
             unsubGame = onSnapshot(gameRef, (docSnap) => {
                 if (!docSnap.exists()) { resetToLobby("تم حذف اللعبة من قبل المضيف."); return; }
                 const gameData = docSnap.data();
+                latestGameData = gameData;
                 render(gameData);
             }, (error) => {
                 resetToLobby("حدث خطأ في الاتصال باللعبة.");
@@ -326,12 +328,10 @@
         }
         
         async function handleCanvasClick(event) {
-            if (Date.now() - lastClickTime < PIXEL_CLICK_COOLDOWN || !currentGameId) return;
-            const gameRef = doc(db, DB_PATH, currentGameId);
-            const gameSnap = await getDoc(gameRef);
-            if (!gameSnap.exists() || gameSnap.data().status !== "playing") return;
+            if (Date.now() - lastClickTime < PIXEL_CLICK_COOLDOWN || !currentGameId || !latestGameData) return;
+            if (latestGameData.status !== "playing") return;
 
-            const me = gameSnap.data().players.find(p => p.uid === userId);
+            const me = latestGameData.players.find(p => p.uid === userId);
             if (!me) return;
 
             const rect = renderer.domElement.getBoundingClientRect();
@@ -343,10 +343,10 @@
                 const index = intersects[0].object.userData.gridIndex;
                 if (index !== undefined) {
                     lastClickTime = Date.now();
-                    const newGrid = [...gameSnap.data().grid];
-                    newGrid[index] = { owner: userId, colorIndex: me.colorIndex };
-                    console.log('Updating cell', index, newGrid[index]);
-                    await updateDoc(gameRef, { grid: newGrid });
+                    latestGameData.grid[index] = { owner: userId, colorIndex: me.colorIndex };
+                    updateCubeColors(latestGameData.grid, latestGameData.players);
+                    updateScores(latestGameData.grid, latestGameData.players);
+                    queueCubeUpdate(index, me.colorIndex);
                 }
             }
         }
@@ -377,6 +377,7 @@
         function cleanupListeners() {
             if(unsubGame) unsubGame(); if(timerInterval) clearInterval(timerInterval);
             unsubGame = timerInterval = currentGameId = null;
+            latestGameData = null; updateQueue = {}; if(flushTimeout) { clearTimeout(flushTimeout); flushTimeout = null; }
         }
 
         function resetToLobby(message = "متصل وجاهز للعب!") {
@@ -397,6 +398,20 @@
             catch (err) { lobbyGameId.textContent = "فشل النسخ"; }
             document.body.removeChild(textArea);
             setTimeout(() => { if(lobbyGameId) lobbyGameId.textContent = id; }, 1500);
+        }
+
+        function queueCubeUpdate(index, colorIndex) {
+            updateQueue[`grid.${index}`] = { owner: userId, colorIndex };
+            if(!flushTimeout){
+                flushTimeout = setTimeout(flushCubeUpdates, UPDATE_BATCH_DELAY);
+            }
+        }
+
+        async function flushCubeUpdates(){
+            const updates = { ...updateQueue };
+            updateQueue = {}; flushTimeout = null;
+            try{ if(currentGameId) await updateDoc(doc(db, DB_PATH, currentGameId), updates); }
+            catch(e){ console.error('Cube update failed', e); }
         }
         
         function renderColorPicker() {
