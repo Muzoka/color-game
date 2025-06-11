@@ -55,6 +55,25 @@
             <p id="lobby-game-id" class="text-4xl font-mono p-3 bg-gray-900 rounded-lg cursor-pointer mb-6" title="اضغط للنسخ"></p>
             <h3 class="text-xl font-bold text-gray-300 mb-3">اللاعبون المنضمون (<span id="player-count">0</span>):</h3>
             <div id="lobby-players-list" class="space-y-2 text-left max-w-md mx-auto mb-8 min-h-[5rem]"></div>
+            <div id="config-options" class="space-y-4 max-w-md mx-auto mb-4 hidden">
+                <div>
+                    <label for="match-duration-select" class="block mb-2 text-sm font-medium text-gray-300">مدة المباراة</label>
+                    <select id="match-duration-select" class="input-field" style="background-color: #4B5563; color: #FFFFFF; border: 1px solid #6B7280;">
+                        <option value="1">1 دقيقة</option>
+                        <option value="2">2 دقائق</option>
+                        <option value="3">3 دقائق</option>
+                        <option value="5" selected>5 دقائق</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="board-size-select" class="block mb-2 text-sm font-medium text-gray-300">حجم اللوحة</label>
+                    <select id="board-size-select" class="input-field" style="background-color: #4B5563; color: #FFFFFF; border: 1px solid #6B7280;">
+                        <option value="4">4 × 4 × 4</option>
+                        <option value="5">5 × 5 × 5</option>
+                        <option value="6" selected>6 × 6 × 6</option>
+                    </select>
+                </div>
+            </div>
             <button id="start-game-btn" class="btn-primary w-full max-w-md mx-auto hidden">🚀 بدء اللعبة</button>
             <p id="lobby-waiting-msg" class="text-gray-400 mt-4">في انتظار المضيف لبدء اللعبة...</p>
         </div>
@@ -92,7 +111,8 @@
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
         import { firebaseConfig } from './firebase-config.js';
 
-        const GRID_SIZE = 15, GAME_DURATION_SECONDS = 300, PIXEL_CLICK_COOLDOWN = 250, UPDATE_BATCH_DELAY = 100;
+        const DEFAULT_BOARD_SIZE = 6, DEFAULT_GAME_DURATION_SECONDS = 300, PIXEL_CLICK_COOLDOWN = 250, UPDATE_BATCH_DELAY = 100;
+        let BOARD_SIZE = DEFAULT_BOARD_SIZE, GAME_DURATION_SECONDS = DEFAULT_GAME_DURATION_SECONDS;
         const PLAYER_COLORS = ["#FF5733", "#33FF57", "#3357FF", "#FF33A1", "#A133FF", "#33FFA1", "#FFD700", "#00FFFF"];
         
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-color-wars-3d';
@@ -107,15 +127,15 @@
         let latestGameData = null, updateQueue = {}, flushTimeout = null;
 
         const el = (id) => document.getElementById(id);
-        const [gameSetupDiv, playerNameInput, gameLobbyDiv, lobbyGameId, lobbyPlayersList, playerCount, startGameBtn, lobbyWaitingMsg, gameBoardDiv, canvasContainer, createGameBtn, joinGameBtn, joinGameIdInput, authStatus, gameIdDisplay, timerDisplay, playerColorBox, statusMessage, scoresContainer, winnerModal, winnerTitle, winnerMessage, playAgainBtn, colorPicker] =
-            ['game-setup', 'player-name-input', 'game-lobby', 'lobby-game-id', 'lobby-players-list', 'player-count', 'start-game-btn', 'lobby-waiting-msg', 'game-board', 'canvas-container', 'create-game-btn', 'join-game-btn', 'join-game-id-input', 'auth-status', 'game-id-display', 'timer-display', 'player-color-box', 'status-message', 'scores-container', 'winner-modal', 'winner-title', 'winner-message', 'play-again-btn', 'color-picker'].map(el);
+        const [gameSetupDiv, playerNameInput, gameLobbyDiv, lobbyGameId, lobbyPlayersList, playerCount, startGameBtn, lobbyWaitingMsg, gameBoardDiv, canvasContainer, createGameBtn, joinGameBtn, joinGameIdInput, authStatus, gameIdDisplay, timerDisplay, playerColorBox, statusMessage, scoresContainer, winnerModal, winnerTitle, winnerMessage, playAgainBtn, colorPicker, configOptionsDiv, durationSelect, boardSizeSelect] =
+            ['game-setup', 'player-name-input', 'game-lobby', 'lobby-game-id', 'lobby-players-list', 'player-count', 'start-game-btn', 'lobby-waiting-msg', 'game-board', 'canvas-container', 'create-game-btn', 'join-game-btn', 'join-game-id-input', 'auth-status', 'game-id-display', 'timer-display', 'player-color-box', 'status-message', 'scores-container', 'winner-modal', 'winner-title', 'winner-message', 'play-again-btn', 'color-picker', 'config-options', 'match-duration-select', 'board-size-select'].map(el);
 
         function init3D() {
             if (is3DInitialized) return;
             scene = new THREE.Scene(); scene.background = new THREE.Color(0x111827);
             renderer = new THREE.WebGLRenderer({ antialias: true }); renderer.setPixelRatio(window.devicePixelRatio); renderer.setSize(canvasContainer.clientWidth, canvasContainer.clientHeight);
             canvasContainer.innerHTML = ''; canvasContainer.appendChild(renderer.domElement);
-            camera = new THREE.PerspectiveCamera(50, canvasContainer.clientWidth / canvasContainer.clientHeight, 1, 1000); camera.position.set(GRID_SIZE, GRID_SIZE, GRID_SIZE * 1.5);
+            camera = new THREE.PerspectiveCamera(50, canvasContainer.clientWidth / canvasContainer.clientHeight, 1, 1000); camera.position.set(BOARD_SIZE * 2, BOARD_SIZE * 2, BOARD_SIZE * 2.5);
             controls = new OrbitControls(camera, renderer.domElement); controls.enableDamping = true;
             scene.add(new THREE.AmbientLight(0xffffff, 0.6)); const dirLight = new THREE.DirectionalLight(0xffffff, 0.8); dirLight.position.set(50, 50, 50); scene.add(dirLight);
             raycaster = new THREE.Raycaster(); mouse = new THREE.Vector2();
@@ -125,13 +145,17 @@
         function createCubeGrid() {
             if (cubeMeshes.length > 0) return;
             const geometry = new THREE.BoxGeometry(1, 1, 1);
-            const offset = - (GRID_SIZE * 1.2) / 2 + 0.6;
-            for (let i = 0; i < GRID_SIZE * GRID_SIZE; i++) {
-                const material = new THREE.MeshLambertMaterial({ color: 0x4B5563 });
-                const cube = new THREE.Mesh(geometry, material);
-                cube.position.set((i % GRID_SIZE) * 1.2 + offset, Math.floor(i / GRID_SIZE) * 1.2 + offset, 0);
-                cube.userData.gridIndex = i;
-                scene.add(cube); cubeMeshes.push(cube);
+            const offset = -((BOARD_SIZE - 1) * 1.2) / 2;
+            for (let x = 0; x < BOARD_SIZE; x++) {
+                for (let y = 0; y < BOARD_SIZE; y++) {
+                    for (let z = 0; z < BOARD_SIZE; z++) {
+                        const material = new THREE.MeshLambertMaterial({ color: 0x4B5563 });
+                        const cube = new THREE.Mesh(geometry, material);
+                        cube.position.set(x * 1.2 + offset, y * 1.2 + offset, z * 1.2 + offset);
+                        cube.userData.gridIndex = z * BOARD_SIZE * BOARD_SIZE + y * BOARD_SIZE + x;
+                        scene.add(cube); cubeMeshes.push(cube);
+                    }
+                }
             }
         }
         function animate() { requestAnimationFrame(animate); if(controls) controls.update(); if (renderer && scene && camera) renderer.render(scene, camera); }
@@ -214,12 +238,18 @@
 
         
         async function startGame() {
+            startGameBtn.disabled = true;
+            const boardSize = parseInt(boardSizeSelect.value, 10) || DEFAULT_BOARD_SIZE;
+            const duration = parseInt(durationSelect.value, 10) || (DEFAULT_GAME_DURATION_SECONDS / 60);
             const gameRef = doc(db, DB_PATH, currentGameId);
             await updateDoc(gameRef, {
                 status: 'playing',
-                grid: Array(GRID_SIZE * GRID_SIZE).fill(null),
+                boardSize,
+                matchDurationSeconds: duration * 60,
+                grid: Array(boardSize * boardSize * boardSize).fill(null),
                 startTime: new Date().toISOString()
             });
+            configOptionsDiv.classList.add('hidden');
         }
         
         function listenToGameUpdates(gameId) {
@@ -259,12 +289,25 @@
             playerCount.textContent = gameData.players.length;
             gameData.players.forEach(p => { lobbyPlayersList.innerHTML += `<div class="player-list-item"><div class="color-box rounded-md" style="background-color: ${PLAYER_COLORS[p.colorIndex]}"></div><span class="text-lg">${p.name}</span></div>`; });
             
-            if (userId === gameData.host) { startGameBtn.classList.remove('hidden'); lobbyWaitingMsg.classList.add('hidden'); }
-            else { startGameBtn.classList.add('hidden'); lobbyWaitingMsg.classList.remove('hidden'); }
+            if (userId === gameData.host) {
+                startGameBtn.classList.remove('hidden');
+                lobbyWaitingMsg.classList.add('hidden');
+                configOptionsDiv.classList.remove('hidden');
+            } else {
+                startGameBtn.classList.add('hidden');
+                lobbyWaitingMsg.classList.remove('hidden');
+                configOptionsDiv.classList.add('hidden');
+            }
         }
         
         function renderGameBoard(gameData) {
-            if (gameBoardDiv.classList.contains('hidden')) { gameLobbyDiv.classList.add('hidden'); gameBoardDiv.classList.remove('hidden'); if (!is3DInitialized) { init3D(); onWindowResize(); } }
+            BOARD_SIZE = gameData.boardSize || DEFAULT_BOARD_SIZE;
+            GAME_DURATION_SECONDS = gameData.matchDurationSeconds || DEFAULT_GAME_DURATION_SECONDS;
+            if (gameBoardDiv.classList.contains('hidden')) {
+                gameLobbyDiv.classList.add('hidden');
+                gameBoardDiv.classList.remove('hidden');
+                if (!is3DInitialized) { init3D(); onWindowResize(); }
+            }
             updateUI(gameData);
         }
 
@@ -389,6 +432,7 @@
             cleanupListeners();
             is3DInitialized = false; cubeMeshes = [];
             winnerModal.classList.add('hidden'); gameBoardDiv.classList.add('hidden'); gameLobbyDiv.classList.add('hidden'); gameSetupDiv.classList.remove('hidden');
+            configOptionsDiv.classList.add('hidden');
             joinGameIdInput.value = ''; authStatus.textContent = message;
         }
         
