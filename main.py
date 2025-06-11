@@ -30,7 +30,7 @@
             
             <div class="mb-4 max-w-sm mx-auto">
                 <label for="player-name-input" class="block mb-2 text-sm font-medium text-gray-300">اسمك في اللعبة</label>
-                <input type="text" id="player-name-input" class="input-field" style="background-color: #4B5563; color: #FFFFFF; border: 1px solid #6B7280;" placeholder="اكتب اسمك هنا" maxlength="15">
+                <input type="text" id="player-name-input" class="input-field" style="background-color: #4B5563; color: #FFFFFF; border: 1px solid #6B7280;" placeholder="اكتب اسمك هنا" maxlength="12">
             </div>
 
             <div class="mb-4 max-w-sm mx-auto">
@@ -144,9 +144,16 @@
             } catch (error) { authStatus.textContent = "فشل الاتصال بالخادم."; }
         }
         
-        function getPlayerInput() { return { uid: userId, name: playerNameInput.value.trim() || "لاعب مجهول", colorIndex: selectedColorIndex }; }
+        function getPlayerInput() {
+            const name = playerNameInput.value.trim();
+            return { uid: userId, name: name.slice(0, 12), colorIndex: selectedColorIndex };
+        }
 
         async function createGame() {
+            if (!playerNameInput.value.trim()) {
+                authStatus.textContent = "الرجاء إدخال اسمك.";
+                return;
+            }
             const gameId = crypto.randomUUID().split('-')[0];
             const gameRef = doc(db, DB_PATH, gameId);
             const player = getPlayerInput();
@@ -159,6 +166,7 @@
         }
         async function joinGame(gameId) {
             if (!gameId) { authStatus.textContent = "الرجاء إدخال معرّف اللعبة."; return; }
+            if (!playerNameInput.value.trim()) { authStatus.textContent = "الرجاء إدخال اسمك."; return; }
             joinGameBtn.disabled = true;
             authStatus.textContent = "جاري التحقق من اللعبة...";
             try {
@@ -167,9 +175,9 @@
                     const gameSnap = await tx.get(gameRef);
                     if (!gameSnap.exists()) throw new Error("اللعبة غير موجودة! تأكد من المعرّف.");
                     const gameData = gameSnap.data();
-                    if (gameData.status !== 'lobby') throw new Error("لا يمكن الانضمام، اللعبة قد بدأت بالفعل.");
                     const players = gameData.players || [];
                     if (players.some(p => p.uid === userId)) return;
+                    if (gameData.status !== 'lobby') throw new Error("لا يمكن الانضمام، اللعبة قد بدأت بالفعل.");
                     if (players.length >= PLAYER_COLORS.length) throw new Error("عذراً، هذه اللعبة ممتلئة.");
                     const newPlayer = getPlayerInput();
                     const usedColors = players.map(p => p.colorIndex);
