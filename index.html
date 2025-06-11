@@ -162,6 +162,11 @@
             if (controls) controls.update();
         }
 
+        function isOnSurface(x, y, z) {
+            const max = BOARD_SIZE - 1;
+            return x === 0 || y === 0 || z === 0 || x === max || y === max || z === max;
+        }
+
         function createCubeGrid() {
             if (cubeMeshes.length > 0) return;
             const geometry = new THREE.BoxGeometry(1, 1, 1);
@@ -170,11 +175,14 @@
             for (let x = 0; x < BOARD_SIZE; x++) {
                 for (let y = 0; y < BOARD_SIZE; y++) {
                     for (let z = 0; z < BOARD_SIZE; z++) {
-                        const material = new THREE.MeshLambertMaterial({ color: 0x4B5563 });
-                        const cube = new THREE.Mesh(geometry, material);
-                        cube.position.set(x * spacing + offset, y * spacing + offset, z * spacing + offset);
-                        cube.userData.gridIndex = z * BOARD_SIZE * BOARD_SIZE + y * BOARD_SIZE + x;
-                        scene.add(cube); cubeMeshes.push(cube);
+                        if (isOnSurface(x, y, z)) {
+                            const material = new THREE.MeshLambertMaterial({ color: 0x4B5563 });
+                            const cube = new THREE.Mesh(geometry, material);
+                            cube.position.set(x * spacing + offset, y * spacing + offset, z * spacing + offset);
+                            cube.userData.gridIndex = z * BOARD_SIZE * BOARD_SIZE + y * BOARD_SIZE + x;
+                            scene.add(cube);
+                            cubeMeshes.push(cube);
+                        }
                     }
                 }
             }
@@ -366,11 +374,11 @@
         
         function updateCubeColors(grid, players) {
             if (!is3DInitialized || !Array.isArray(grid) || grid.length === 0) return;
-            grid.forEach((cell, i) => {
+            cubeMeshes.forEach(cube => {
+                const index = cube.userData.gridIndex;
+                const cell = grid[index];
                 const colorIndex = cell && typeof cell.colorIndex === 'number' ? cell.colorIndex : -1;
-                if (cubeMeshes[i]) {
-                    cubeMeshes[i].material.color.set(colorIndex !== -1 ? PLAYER_COLORS[colorIndex] : 0x4B5563);
-                }
+                cube.material.color.set(colorIndex !== -1 ? PLAYER_COLORS[colorIndex] : 0x4B5563);
             });
         }
 
